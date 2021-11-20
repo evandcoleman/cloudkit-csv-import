@@ -3,8 +3,9 @@
   "version": "0.1.0",
   "description": "A CSV sync tool for CloudKit",
   "main": "index.js",
+  "type": "module",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js"
   },
   "repository": {
     "type": "git",
@@ -15,5 +16,16 @@
   "bugs": {
     "url": "https://github.com/evandcoleman/cloudkit-csv-import/issues"
   },
-  "homepage": "https://github.com/evandcoleman/cloudkit-csv-import#readme"
+  "homepage": "https://github.com/evandcoleman/cloudkit-csv-import#readme",
+  "dependencies": {
+    "csvtojson": "^2.0.10",
+    "node-fetch": "^3.1.0"
+  },
+  "devDependencies": {
+    "jest": "^27.3.1"
+  },
+  "jest": {
+    "testEnvironment": "jest-environment-node",
+    "transform": {}
+  }
 }
