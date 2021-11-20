@@ -47,7 +47,7 @@ export class CloudKit {
 
     for (let i = 0; i < numberOfChunks; i += 1) {
       const fromIndex = i * chunkSize;
-      const toIndex = Math.min(fromIndex + chunkSize, operationCount - 1)
+      const toIndex = Math.min(fromIndex + chunkSize, operationCount)
       const operations = allOperations.slice(fromIndex, toIndex);
 
       console.log(`Writing ${fromIndex}-${toIndex} of ${operationCount} ${options.recordType}...`);
