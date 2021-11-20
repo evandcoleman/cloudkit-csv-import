@@ -1,7 +1,7 @@
 import fetch from 'node-fetch';
 import csv from 'csvtojson';
 import * as crypto from 'crypto';
-import { ec } from 'elliptic';
+import * as EC from 'elliptic';
 
 export class CloudKit {
   constructor(options) {
@@ -64,7 +64,7 @@ export class CloudKit {
         crypto.createHash('sha256').update(requestBody).digest('base64'),
         requestPath,
       ].join(":");
-      const ecdsa = new EC("secp256k1");
+      const ecdsa = new EC.ec("secp256k1");
       const signature = ecdsa.sign(rawSignature, this.privateKey, { canonical: true });
 
       const requestOptions = {
