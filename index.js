@@ -41,7 +41,7 @@ export class CloudKit {
 
   async importRecords(records, options) {
     const allOperations = this._createOperations(records, options);
-    const chunkSize = 50;
+    const chunkSize = options.chunkSize || 200;
     const numberOfChunks = Math.ceil(allOperations.length / chunkSize);
     const operationCount = allOperations.length;
 
