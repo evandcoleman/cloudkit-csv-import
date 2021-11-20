@@ -1,0 +1,19 @@
+{
+  "name": "cloudkit-csv-import",
+  "version": "0.1.0",
+  "description": "A CSV sync tool for CloudKit",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/evandcoleman/cloudkit-csv-import.git"
+  },
+  "author": "Evan Coleman <e@edc.me> (http://edc.me/)",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/evandcoleman/cloudkit-csv-import/issues"
+  },
+  "homepage": "https://github.com/evandcoleman/cloudkit-csv-import#readme"
+}
