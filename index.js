@@ -32,11 +32,11 @@ export class CloudKit {
   }
 
   async importCSVFile(csvPath, options) {
-    return importRecords(await csv().fromFile(csvPath), options);
+    return this.importRecords(await csv().fromFile(csvPath), options);
   }
 
   async importCSV(csvString, options) {
-    return importRecords(await csv().fromString(csvString), options);
+    return this.importRecords(await csv().fromString(csvString), options);
   }
 
   async importRecords(records, options) {
