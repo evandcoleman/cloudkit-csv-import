@@ -1,5 +1,7 @@
 import fetch from 'node-fetch';
 import csv from 'csvtojson';
+import * as crypto from 'crypto';
+import { ec } from 'elliptic';
 
 export class CloudKit {
   constructor(options) {
@@ -52,17 +54,30 @@ export class CloudKit {
 
       console.log(`Writing ${fromIndex}-${toIndex} of ${operationCount} ${options.recordType}...`);
 
+      const requestBody = JSON.stringify({
+        operations
+      });
+      const requestPath = `/database/1/${options.container}/${options.environment}/public/records/modify`;
+      const date = new Date();
+      const rawSignature = [
+        date.toISOString(),
+        crypto.createHash('sha256').update(requestBody).digest('base64'),
+        requestPath,
+      ].join(":");
+      const ecdsa = new EC("secp256k1");
+      const signature = ecdsa.sign(rawSignature, this.privateKey, { canonical: true });
+
       const requestOptions = {
         method: "POST",
         headers: {
           "X-Apple-CloudKit-Request-KeyID": this.keyId,
+          "X-Apple-CloudKit-Request-ISO8601Date": date.toISOString(),
+          "X-Apple-CloudKit-Request-SignatureV1": signature,
           "Content-Type": "application/json; charset=utf-8"
         },
-        body: JSON.stringify({
-          operations
-        }),
+        body: requestBody,
       }
-      const response = await fetch(`https://api.apple-cloudkit.com/database/1/${options.container}/${options.environment}/public/records/modify`, requestOptions);
+      const response = await fetch(`https://api.apple-cloudkit.com${requestPath}`, requestOptions);
       const data = await response.json();
 
       console.log(data);
