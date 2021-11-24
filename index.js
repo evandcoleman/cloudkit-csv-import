@@ -2,11 +2,18 @@ import fetch from 'node-fetch';
 import csv from 'csvtojson';
 import * as crypto from 'crypto';
 import moment from 'moment';
+import PQueue from 'p-queue';
+import pRetry from 'p-retry';
 
 export class CloudKit {
   constructor(options) {
     this.keyId = options.keyId;
     this.privateKey = options.privateKey;
+    this.queue = new PQueue({
+      concurrency: 25,
+      interval: 2000,
+      intervalCap: 50,
+    });
   }
 
   _createFields(record, options) {
@@ -14,9 +21,11 @@ export class CloudKit {
       .reduce((accumulator, key) => {
         let acc = accumulator;
 
-        acc[key] = {
-          value: record[key]
-        };
+        if (key !== "recordName") {
+          acc[key] = {
+            value: record[key]
+          };
+        }
 
         return acc;
       }, {});
@@ -37,80 +46,95 @@ export class CloudKit {
           }, {});
       });
 
-    return (options.prepare ? options.prepare(mappedRecords) : { recordType: options.recordType, records: mappedRecords })
-      .map(({ recordType, records }) => {
-        return records
-          .map((record) => {
-            const fields = this._createFields(record, options);
-            let recordName = null;
-            if (options.recordName && typeof options.recordName === "object") {
-              recordName = record[options.recordName[recordType]]
-            } else if (options.recordName) {
-              recordName = record[options.recordName];
-            }
+    return (options.prepare ? options.prepare(mappedRecords) : mappedRecords)
+      .map((record) => {
+        const fields = this._createFields(record, options);
+        let recordName = null;
+        if (options.recordName && typeof options.recordName === "object") {
+          recordName = record[options.recordName[options.recordType]];
+        } else if (options.recordName && typeof options.recordName === "function") {
+          recordName = options.recordName(record);
+        } else if (options.recordName) {
+          recordName = record[options.recordName];
+        } else if (record.recordName) {
+          recordName = record.recordName;
+        }
 
-            return {
-              operationType: "create",
-              record: {
-                recordName: recordName,
-                recordType: recordType,
-                fields
-              }
-            };
-          });
+        return {
+          operationType: "forceReplace",
+          record: {
+            recordName: recordName,
+            recordType: options.recordType,
+            fields
+          }
+        };
       });
   }
 
-  async _writeOperations(allOperations, options) {
+  async _postOperations(operations, options) {
+    const requestBody = JSON.stringify({
+      operations
+    });
+    const requestPath = `/database/1/${options.container}/${options.environment}/public/records/modify`;
+    const date = moment().utc().format('YYYY-MM-DD[T]HH:mm:ss[Z]');
+    const message = [
+      date,
+      crypto.createHash('sha256').update(requestBody).digest('base64'),
+      requestPath,
+    ].join(":");
+    const signature = crypto.createSign('RSA-SHA256').update(message).sign(this.privateKey, 'base64');
+
+    const requestOptions = {
+      method: "POST",
+      headers: {
+        "X-Apple-CloudKit-Request-KeyID": this.keyId,
+        "X-Apple-CloudKit-Request-ISO8601Date": date,
+        "X-Apple-CloudKit-Request-SignatureV1": signature,
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      body: requestBody,
+    }
+    const requestUrl = `https://api.apple-cloudkit.com${requestPath}`;
+    // console.log(requestUrl, JSON.stringify(requestOptions, null, 2));
+
+    const response = await fetch(requestUrl, requestOptions);
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(`Failed writing (${response.status}): ` + JSON.stringify(data, null, 2));
+    } else {
+      for (let response of data.records) {
+        if (response.serverErrorCode) {
+          throw new Error("Failed writing: " + JSON.stringify(response, null, 2));
+        }
+      }
+
+      return data.records;
+    }
+  }
+
+  async _enqueueWriteOperations(allOperations, options) {
     const chunkSize = options.chunkSize || 200;
     const numberOfChunks = Math.ceil(allOperations.length / chunkSize);
     const operationCount = allOperations.length;
-    let responses = [];
+    let promises = []
 
     for (let i = 0; i < numberOfChunks; i += 1) {
       const fromIndex = i * chunkSize;
       const toIndex = Math.min(fromIndex + chunkSize, operationCount)
       const operations = allOperations.slice(fromIndex, toIndex);
 
-      console.log(`Writing ${fromIndex}-${toIndex} of ${operationCount} ${operations[0].record.recordType}...`);
+      const work = function() {
+        console.log(`Writing ${fromIndex}-${toIndex} of ${operationCount} ${operations[0].record.recordType}...`);
 
-      const requestBody = JSON.stringify({
-        operations
-      });
-      const requestPath = `/database/1/${options.container}/${options.environment}/public/records/modify`;
-      const date = moment().utc().format('YYYY-MM-DD[T]HH:mm:ss[Z]');
-      const message = [
-        date,
-        crypto.createHash('sha256').update(requestBody).digest('base64'),
-        requestPath,
-      ].join(":");
-      const signature = crypto.createSign('RSA-SHA256').update(message).sign(this.privateKey, 'base64');
+        return this._postOperations(operations, options);
+      };
 
-      const requestOptions = {
-        method: "POST",
-        headers: {
-          "X-Apple-CloudKit-Request-KeyID": this.keyId,
-          "X-Apple-CloudKit-Request-ISO8601Date": date,
-          "X-Apple-CloudKit-Request-SignatureV1": signature,
-          "Content-Type": "application/json; charset=utf-8"
-        },
-        body: requestBody,
-      }
-      const requestUrl = `https://api.apple-cloudkit.com${requestPath}`;
-      // console.log(requestUrl, JSON.stringify(requestOptions, null, 2));
-
-      const response = await fetch(requestUrl, requestOptions);
-      const data = await response.json();
-
-      if (!response.ok) {
-        console.log(data);
-      } else {
-        responses = responses.concat(data.records);
-        console.log(JSON.stringify(data.records, null, 2));
-      }
+      promises.push(this.queue.add(() => pRetry(work.bind(this), { retries: 5 })));
     }
 
-    return responses;
+    return Promise.all(promises)
+      .then((values) => values.flat());
   }
 
   async importCSVFile(csvPath, options) {
@@ -122,15 +146,12 @@ export class CloudKit {
   }
 
   async importRecords(records, options) {
-    const operationGroups = this._createOperations(records, options);
+    const operations = this._createOperations(records, options);
 
-    let responses = [];
+    const responsesPromise = this._enqueueWriteOperations(operations, options);
 
-    for (let operations of operationGroups) {
-      responses.push(await this._writeOperations(operations, options));
-    }
+    await this.queue.onIdle();
 
-    // console.log(JSON.stringify(responses, null, 2));
-    return responses;
+    return responsesPromise;
   }
 }
