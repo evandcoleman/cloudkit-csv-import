@@ -119,7 +119,7 @@ export class CloudKit {
     const operationCount = allOperations.length;
     let promises = []
 
-    console.log(`Writing ${operationCount} ${operations[0].record.recordType}s...`);
+    console.log(`Writing ${operationCount} records...`);
 
     for (let i = 0; i < numberOfChunks; i += 1) {
       const fromIndex = i * chunkSize;
