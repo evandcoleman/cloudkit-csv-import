@@ -9,10 +9,10 @@ export class CloudKit {
   constructor(options) {
     this.keyId = options.keyId;
     this.privateKey = options.privateKey;
-    this.queue = new PQueue({
-      concurrency: 25,
+    this.queue = new PQueue(options.pQueue || {
+      concurrency: 200,
       interval: 2000,
-      intervalCap: 50,
+      intervalCap: 400,
     });
   }
 
@@ -31,7 +31,7 @@ export class CloudKit {
       }, {});
   }
 
-  _createOperations(records, options) {
+  _createOperations(records, operationType, options) {
     const mappedRecords = records
       .map((row) => {
         return Object.keys(row)
@@ -48,7 +48,7 @@ export class CloudKit {
 
     return (options.prepare ? options.prepare(mappedRecords) : mappedRecords)
       .map((record) => {
-        const fields = this._createFields(record, options);
+        const fields = operationType.toLowerCase().indexOf("delete") < 0 ? this._createFields(record, options) : null;
         let recordName = null;
         if (options.recordName && typeof options.recordName === "object") {
           recordName = record[options.recordName[options.recordType]];
@@ -61,11 +61,11 @@ export class CloudKit {
         }
 
         return {
-          operationType: "forceReplace",
+          operationType,
           record: {
             recordName: recordName,
             recordType: options.recordType,
-            fields
+            fields: fields
           }
         };
       });
@@ -124,13 +124,13 @@ export class CloudKit {
       const toIndex = Math.min(fromIndex + chunkSize, operationCount)
       const operations = allOperations.slice(fromIndex, toIndex);
 
-      const work = function() {
+      const work = async function() {
         console.log(`Writing ${fromIndex}-${toIndex} of ${operationCount} ${operations[0].record.recordType}...`);
 
         return this._postOperations(operations, options);
       };
 
-      promises.push(this.queue.add(() => pRetry(work.bind(this), { retries: 5 })));
+      promises.push(this.queue.add(() => pRetry(work.bind(this), { retries: 2 })));
     }
 
     return Promise.all(promises)
@@ -146,7 +146,17 @@ export class CloudKit {
   }
 
   async importRecords(records, options) {
-    const operations = this._createOperations(records, options);
+    const operations = this._createOperations(records, "forceUpdate", options);
+
+    const responsesPromise = this._enqueueWriteOperations(operations, options);
+
+    await this.queue.onIdle();
+
+    return responsesPromise;
+  }
+
+  async removeRecords(records, options) {
+    const operations = this._createOperations(records, "forceDelete", options);
 
     const responsesPromise = this._enqueueWriteOperations(operations, options);
 
