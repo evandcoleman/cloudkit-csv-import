@@ -1,6 +1,6 @@
 {
   "name": "cloudkit-csv-import",
-  "version": "0.2.8",
+  "version": "0.2.9",
   "description": "A CSV sync tool for CloudKit",
   "main": "index.js",
   "type": "module",
