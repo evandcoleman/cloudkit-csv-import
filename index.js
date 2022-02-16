@@ -119,13 +119,17 @@ export class CloudKit {
     const operationCount = allOperations.length;
     let promises = []
 
+    console.log(`Writing ${operationCount} ${operations[0].record.recordType}s...`);
+
     for (let i = 0; i < numberOfChunks; i += 1) {
       const fromIndex = i * chunkSize;
       const toIndex = Math.min(fromIndex + chunkSize, operationCount)
       const operations = allOperations.slice(fromIndex, toIndex);
 
       const work = async function() {
-        console.log(`Writing ${fromIndex}-${toIndex} of ${operationCount} ${operations[0].record.recordType}...`);
+        if (process.env.DEBUG) {
+          console.log(`Writing ${fromIndex}-${toIndex} of ${operationCount} ${operations[0].record.recordType}...`);
+        }
 
         return this._postOperations(operations, options);
       };
