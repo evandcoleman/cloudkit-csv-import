@@ -101,13 +101,15 @@ export class CloudKit {
     const data = await response.json();
 
     if (!response.ok) {
-      console.log(JSON.stringify(operations, null, 2));
-      throw new Error(`Failed writing (${response.status}): ` + JSON.stringify(data, null, 2));
+      let error = new Error(`Failed writing (${response.status}): ` + JSON.stringify(data, null, 2));
+      error.operations = operations;
+      throw error;
     } else {
       for (let response of data.records) {
         if (response.serverErrorCode) {
-          console.log(JSON.stringify(operations, null, 2));
-          throw new Error("Failed writing: " + JSON.stringify(response, null, 2));
+          let error = new Error("Failed writing: " + JSON.stringify(response, null, 2));
+          error.operations = operations;
+          throw error;
         }
       }
 
